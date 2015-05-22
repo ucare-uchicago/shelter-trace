@@ -1,0 +1,7 @@
+The total size of all small writes for each trace.
+In many cases, including T1, T2, T3, and T5, small writes amount to only
+a few gigabytes of data, regardless of policy. 
+If shelters were cleaned every five minutes, and all writes smaller than 64 KB
+were sheltered, none of these traces would require more than 1 GB to 
+accomodate sheltered data.
+

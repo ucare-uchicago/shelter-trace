@@ -1,0 +1,4 @@
+The total size of all small reads for each trace.
+T1, T2, T5 and T6 are dominated by reads; T3 and T4 are not.
+We can see that the spikes in activity in T3 and T4 are due largely to
+reads. 

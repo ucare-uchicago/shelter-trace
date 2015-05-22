@@ -1,0 +1,61 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+#modified to use event START time, and to include elapsed time as well
+
+import re
+import argparse
+
+parser = argparse.ArgumentParser()
+parser.add_argument("file", help="trace file to process")
+parser.add_argument("-f", "--filter", help="filter only read/write events", choices=['write', 'read'])
+parser.add_argument("-o", "--offset", help="start time offset", type=float, default=0.0)
+args = parser.parse_args()
+
+type_filter = -1
+if args.filter == "write":
+    type_filter = 0	
+elif args.filter == "read":
+    type_filter = 1
+
+with open(args.file) as f:
+	# skip header
+	for line in f:
+            if line[:9] == "EndHeader":
+	        break
+
+	re_p = re.compile("(\w+) \(\ ?(\d+)\)")
+
+	for line in f:		
+		tok = map(str.lstrip, line.split(","))
+		flags = -1
+                is_swap = 0
+
+		if tok[0] == "DiskWrite":
+			flags = 0
+		elif tok[0] == "DiskRead":
+			flags = 1
+
+		if flags == -1:
+			continue
+		if type_filter != -1 and type_filter != flags:
+                        continue
+
+                if tok[-1].endswith("pagefile.sys\""):
+                    is_swap = 1
+
+		#p_info = re_p.search(tok[2])
+		t = {
+			"time": ((float(tok[1]) - float(tok[7])) / 1000.0) + args.offset,
+			"devno": int(tok[8]),
+			"blkno": int(tok[5], 16) / 512,
+			"bcount": int(tok[6], 16) / 512,
+			"flags": flags,
+                        "elapsed": float(tok[7]) / 1000.0,
+                        "is_swap" : is_swap
+			#"pname": p_info.group(1),
+			#"pid": int(p_info.group(2)),
+		};
+
+		print "%s %d %d %d %d %s %d" % ("{0:.3f}".format(t['time']), t['devno'], t['blkno'], t['bcount'], t['flags'], "{0:.3f}".format(t['elapsed']), t['is_swap'])
+

@@ -1,0 +1,15 @@
+The total size of all small writes for each trace.
+The size of small writes in T9 and T10 is modest. 
+Assuming shelters are cleaned every 5 minutes and all writes smaller than 32 KB
+are sheltered, all writes in T7, T8, T9 and T10 could be sheltered in a little
+over 1 GB. For both T7 and T8, using a 32 KB policy significantly reduces 
+memory requirements, although a 64 KB policy would still be feasible.
+T11 would impose unreasonable memory demands of almost 40 GB, and T12 would
+require 5-10 GB. 
+
+In short, pinning sheltered writes would require fairly little memory, except
+for T11 and T12.
+
+(All estimates of memory requirements are very rough, back-of-the-envelope
+calculations.)
+

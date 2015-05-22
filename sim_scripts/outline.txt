@@ -1,0 +1,6 @@
+automate everything!
+bash script to:
+     i. run python simulation script in each folder w/ appropriate settings (prealloc size, shift, cleanup)
+     ii. calculate csd for results
+     iii. merge results with initial CSD results
+     iv. plot results

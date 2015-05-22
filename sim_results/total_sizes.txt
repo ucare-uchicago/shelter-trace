@@ -1,0 +1,11 @@
+The cumulative size of all I/O requests, for each trace.
+Total I/O size ranges from over 2 TB (for T1, the Live Maps trace) 
+to under 20 GB (for T9, the Radius Authentication server). 
+T1 is fairly bursty and a few other graphs exhibit large spikes
+in disk activity; T4, a mail server, spikes at around 13 hours due to 
+a large server replication event, and T7, the Windows build server, is
+most active between hours 4 and 8. However, most traces show a fairly 
+steady rate of disk activity. Traces 11 and 12, the database benchmarks,
+show far more activity than any of the production servers.
+
+
