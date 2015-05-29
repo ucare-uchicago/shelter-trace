@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 """
 Sheltering Simulator.
 Writes <= 32 KB are sheltered.
@@ -22,6 +23,8 @@ policy_size = 32
 one_MB = 2 * 1024
 
 #info about size of preallocated shelters:
+#x is the size of a shelter, 
+#y is the distance between the start of one shelter and start of the next (shelter range)
 if args.prealloc == 1:
     x = 1 * one_MB
 elif args.prealloc == 2:
@@ -178,7 +181,8 @@ class CurrentReq:
 
 #HERE IS ANOTHER FUNCTION    
             
-#modify requests in request[disk_num] so they're sheltered
+#this function just finds the appropriate shelter for CurrentReq
+#the shelter.shelter_writes method actually modifies the request
 def shelter_writes (current_requests):
     #if tail is negative, there's nothing to shelter behind,
     #because this is the first request for this disk
@@ -189,12 +193,12 @@ def shelter_writes (current_requests):
             #the tail is inside a shelter
             #this should only happen if we're in policy B, so not shifting
             #in which case we jump to next shelter
-            #assert (args.code == "B")
             if args.code != "B":
+                #something is wrong; print debugging info and quit
                 print "shelter block: "+str(shelter_blk)
                 print "tail: "+str(tail)
                 sys.exit(0)
-            shelter_blk += y
+            shelter_blk += y #shelter_blk + y is the location of the next shelter
         if shelter_blk not in shelters:
             shelters[shelter_blk] = Shelter(shelter_blk)
         shelter = shelters[shelter_blk]
@@ -203,12 +207,12 @@ def shelter_writes (current_requests):
 
 
 #MAIN PROCESSING LOOP
-
+#we process traces separately by disk
 for filename in traces:
     print filename
 
     #INITIALIZE
-    tail = -1
+    tail = -1    #tail is location of disk head after latest request
     current_reqs = None
     #shelters: look up shelter by blk_num
     shelters = {}
@@ -242,11 +246,11 @@ for filename in traces:
             else:
                 #this is the beginning of a new request
                 #first, deal with old request.
-                if current_reqs.should_shelter():
-                    shelter_writes(current_reqs)
+                if current_reqs.should_shelter():      
+                    shelter_writes(current_reqs) #modify each request so it's written to appropriate block in a shelter
                     last_sheltered = True
                 else:
-                    current_reqs.shift_requests()
+                    current_reqs.shift_requests() #if this series of requests originally overlapped with a shelter, skip over the shelter
                     last_sheltered = False
                 #Now that requests have been modified as needed,
                 #we can write them to outfile
