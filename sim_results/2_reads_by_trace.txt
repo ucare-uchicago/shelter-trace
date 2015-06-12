@@ -1,5 +1,0 @@
-The total size of all small reads for each trace.
-Reads account for some, but not all, of the spike in T7.
-T9 and T10 have relatively little read activity, but T10 shows a spike
-in reads at about 13 hours.
-T11 and T12 are mostly reads.

@@ -1,8 +1,0 @@
-The total size of all "small" requests for each trace. We use five 
-different policies to define small requests: the maximum size may be 4 KB,
-8 KB, 16 KB, 32 KB or 64 KB. 
-The spike in activity in T4, evident in the previous two graphs, is also
-visible here; in fact, requests between 4 and 8 KB in size appear to 
-account for most of this spike. T1 is fairly bursty, as in the previous
-two graphs, and T3 exhibits a spike in small requests that isn't visible
-in the previous two graphs.
