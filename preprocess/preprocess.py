@@ -5,7 +5,7 @@
 
 import re
 
-def preprocess_func(infile, outfile):
+def preprocess(infile, outfile):
     with open(infile, "r") as f, open(outfile, "w") as output :
 	# skip header
 	for line in f:
