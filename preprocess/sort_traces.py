@@ -5,7 +5,7 @@ import glob
 import re
 import sys
 #import settings.py, which has our format strings
-sys.path.append("../")
+sys.path.append("../common/")
 import settings
 
 timestamp_date_dict = {}

@@ -9,7 +9,7 @@ import preprocess
 import split_by_disk
 
 #lets us import shelter-trace/settings.py
-sys.path.append("../") 
+sys.path.append("../common/") 
 import settings
 
 for idx, trace in enumerate(settings.traces, 1):
