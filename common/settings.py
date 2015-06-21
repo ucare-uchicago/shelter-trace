@@ -5,4 +5,5 @@ format_strings=["LiveMapsBE.%m-%d-%Y.%I-%M-%p.trace.etl", "see readme", "see rea
 traces_path="/Users/nora/ucare/ucare-data/traces"
 preprocessed_traces_path="/Users/nora/ucare/ucare-data/preprocessed-traces"
 results_path="/Users/nora/ucare/ucare-data/results"
+shelter_size=32  #in all simulations, shelter writes <= 32 KB
 

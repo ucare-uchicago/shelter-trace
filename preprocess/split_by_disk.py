@@ -1,9 +1,13 @@
-import sort_traces
 import csv
 import os
+import sys
 
+#lets us import shelter-trace/common/sort_traces.py
+sys.path.append("../common/")
+import sort_traces
 
 def split_by_disk(idx, trace_name, trace_path, readme_path):
+    current_dir = os.getcwd()
     os.chdir(trace_path)
     traces = sort_traces.get_traces(idx, trace_name, readme_path)
 
@@ -40,3 +44,5 @@ def split_by_disk(idx, trace_name, trace_path, readme_path):
     #cleanup
     for k, file in files.iteritems():
         file.close()
+    os.chdir(current_dir)
+        

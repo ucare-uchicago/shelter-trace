@@ -5,10 +5,11 @@ Currently does not support T11 or T12, or the time offset argument that original
 import sys
 import os
 import glob
+import subprocess
 import preprocess
 import split_by_disk
 
-#lets us import shelter-trace/settings.py
+#lets us import shelter-trace/common/settings.py
 sys.path.append("../common/") 
 import settings
 
@@ -31,4 +32,5 @@ for idx, trace in enumerate(settings.traces, 1):
                                 trace, 
                                 processed_traces_path, 
                                 "{}/{}".format(settings.traces_path, trace)) #path to these trace's README file    
-        
+#run consolidate
+os.system("./consolidate.py")
