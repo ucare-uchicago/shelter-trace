@@ -5,6 +5,7 @@ Writes <= 32 KB are sheltered.
 """
 
 #IMPORTS
+import os
 import sys
 import config
 import glob
@@ -12,12 +13,16 @@ import csv
 import subprocess
 from copy import copy
 
+#user shelter-trace/commons/settings.py to tell us location of input/results
+sys.path.append("../common/")
+import settings
+
 #CONSTANTS/CONFIG
 
 args = config.args
 
 #cutoff size in KB
-policy_size = 32
+#policy_size = 32
 
 #MB in sectors
 one_MB = 2 * 1024
@@ -39,8 +44,15 @@ if args.code =="B" or args.code =="C":
 else:
     cleanup = True
 
-traces = glob.glob(args.number+"_disk*")
+#get list of input files
+trace_name = settings.traces[int(args.number) - 1]
+traces_glob = "{}/{}/*_consolidated.txt".format(settings.preprocessed_traces_path, trace_name)
+traces = glob.glob(traces_glob)
 policy_code = "P"+args.code+str(args.prealloc)
+
+#create output directory if it doesn't exist
+if not os.path.exists(settings.simulated_traces_path):
+    os.makedirs(settings.simulated_traces_path)
 
 
 #FUNCTIONS
@@ -151,7 +163,7 @@ class CurrentReq:
         self.requests.append(request)
         return
     def should_shelter(self):
-        return (self.size <= policy_size * 2 and self.flag == 0)
+        return (self.size <= settings.shelter_size * 2 and self.flag == 0)
     def shift_requests(self):
         #if our code is B, don't modify requests
         if args.code != "B":
@@ -220,7 +232,7 @@ for filename in traces:
     #remember whether last write was sheltered; 
     #this affects how we shelter a write when the current tail is inside a shelter
     last_sheltered = False
-    outfile = policy_code+"_"+filename
+    outfile = "{}/{}_{}".format(settings.simulated_traces_path, policy_code, os.path.basename(filename))
 
     with open(filename, "r") as input, open(outfile, "w") as output:
         reader = csv.reader(input, delimiter=' ')

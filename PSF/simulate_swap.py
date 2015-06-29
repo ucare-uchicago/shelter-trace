@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 """
 Sheltering Simulator.
 Writes <= 32 KB are sheltered.
