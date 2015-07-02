@@ -39,10 +39,10 @@ else:
 y = x * 10
 
 #info about cleanup:
-if args.code =="B" or args.code =="C":
-    cleanup = False
-else:
-    cleanup = True
+if not(args.code =="B" or args.code =="C"):
+    print "Cleanup not supported! Please choose policy B or C."
+    sys.exit(0)
+
 
 #get list of input files
 trace_name = settings.traces[int(args.number) - 1]
@@ -86,117 +86,41 @@ def dodge_shelters(req):
         new_reqs.append(new_req)
         return new_reqs
 
-#CLASSES
+def shift_request(req):
+    if args.code == "B":
+        #Policy B indicates we don't shift requests to avoid shelters,
+        #so do nothing
+        return [req]
+    else:
+        #how far down do we have to push start of request?
+        #num_shelters is number of shelters that END before the FIRST block of the request
+        start_blk = req[2]
+        num_shelters = start_blk / y
+        shift = num_shelters * x
+        new_start = start_blk + shift
+        if new_start >= next_shelter:
+            #new start is inside a shelter
+            #so shift it one more shelter's-length down
+            new_start += x
+            next_shetler = get_next_shelter(new_start)
+        req[2] = new_start
+        #split up request as needed so it doesn't run into a shelter
+        split_req = dodge_shelters(req)
+        split_reqs.reverse() #dodge_shelters returns requests in reverse because recursion
+        if not split_reqs:
+            print "dodge_shelters returned an empty request!"
+            sys.exit(0)
+        return split_reqs
 
-class Shelter:
-    """Keep track of information about shelter,
-    including how full it is and requests in it that need to be cleaned."""
-    def __init__(self, blk):
-        self.start = blk
-        self.tail = blk
-        self.end = self.start + x
-        assert(self.end % y == 0)
-        #a request is of the form (blknum, blksize)
-        #we only keep track of these if we are cleaning up
-        self.reqs = []
-        return
-    def enough_space(self, reqs):
-        if not(cleanup):
-            #no cleanup, so doesn't matter
-            return True
-        else:
-            total_size = sum([row[3] for row in reqs])
-            if total_size <= (self.end - self.tail):
-                return True
-            else:
-                return False
-    def shelter_writes(self, current_reqs):
-        assert self.enough_space(current_reqs.requests)
-        #if we need to clean up later, consolidate this list of requests,
-        #which we know are sequential, into one request, remembering
-        #where it will need to be written later
-        if cleanup:
-            cleanup_req_blk = requests[0][2]
-            cleanup_req_size = 0
-        for req in current_reqs.requests:
-            size = req[3]
-            req[6] = 1 #mark as sheltered
-            #make sure request isn't larger than whole shelter
-            if size > x:
-                print req
-                print x
-                sys.exit(0)
-            if self.tail + size > self.end:
-                #out of space, back to beginning of buffer
-                self.tail = self.start
-            #modify request to write to tail of shelter
-            req[2] = self.tail
-            self.tail += size
-            if cleanup:
-                cleanup_req_size += size
-        if cleanup:
-            self.reqs.append(cleanup_req_blk, cleanup_req_size)
-        return
 
-class CurrentReq:
-    """Keep track of information about current sequential series of writes."""
-    def __init__(self, request):
-        #total size of current series of requests
-        self.size = request[3]
-        #the requests themselves
-        self.requests = [request]
-        #are these reads or writes?
-        self.flag = request[4]
-        return
-    #the next sequential block in this series
-    def get_next_blk(self):
-        #we just look at last block; after shifting, this series may no longer be sequential
-        return self.requests[-1][2] + self.requests[-1][3]
-    def is_sequential(self, req):
-        #the next request is sequential IF we have some requests already, 
-        #AND its starting block comes after the tail of these requests, AND it's the same
-        #type of I/O (i.e. read or write)
-        return (self.requests and self.get_next_blk() == req[2] and self.flag == req[4])
-    def add_req(self, request):
-        assert(self.is_sequential(request))
-        self.size += request[3]
-        self.requests.append(request)
-        return
-    def should_shelter(self):
-        return (self.size <= settings.shelter_size * 2 and self.flag == 0)
-    def shift_requests(self):
-        #if our code is B, don't modify requests
-        if args.code != "B":
-            new_reqs = []
-            for req in self.requests:
-                start_blk = req[2]
-                size = req[3]
-                #num_shelters is number of shelters that END behind the FIRST 
-                #block of the request
-                num_shelters = start_blk / y
-                shift = num_shelters * x
-                new_start = start_blk + shift
-                next_shelter = get_next_shelter(new_start)
-                if new_start >= next_shelter:
-                   #new_start is inside a shelter, shift it to just after shelter
-                    #new_start = next_shelter + x
-                    new_start += x
-                    next_shelter = get_next_shelter(new_start)
-                req[2] = new_start
-                #split up request as needed so it doesn't run into a shelter
-                split_reqs = dodge_shelters(req)
-                split_reqs.reverse()
-                if not split_reqs:
-                    print "no split_reqs!"
-                new_reqs.extend(split_reqs)
-            self.requests = new_reqs
-            return
+#should this request be sheltered?
+def should_shelter(request):
+    return (request[3] <= settings.shelter_size * 2 and request[4]==0)
 
-#HERE IS ANOTHER FUNCTION    
-            
-#this function just finds the appropriate shelter for CurrentReq
+
+#this function just finds the appropriate shelter for the current request
 #the shelter.shelter_writes method actually modifies the request
-def shelter_writes (current_requests):
+def shelter_write (current_request):
     #if tail is negative, there's nothing to shelter behind,
     #because this is the first request for this disk
     #so don't change it
@@ -215,8 +139,42 @@ def shelter_writes (current_requests):
         if shelter_blk not in shelters:
             shelters[shelter_blk] = Shelter(shelter_blk)
         shelter = shelters[shelter_blk]
-        shelter.shelter_writes(current_requests)
+        shelter.shelter_write(current_request)
     return
+
+
+#CLASSES
+
+class Shelter:
+    """Keep track of information about shelter,
+    including how full it is and requests in it that need to be cleaned."""
+    def __init__(self, blk):
+        self.start = blk
+        self.tail = blk
+        self.end = self.start + x
+        assert(self.end % y == 0)
+        return
+    def enough_space(self, request):
+        if request[3] <= (self.end - self.tail):
+            return True
+        else:
+            return False
+    def shelter_write(self, request):
+        #modify request so it's at appropriate point in shelter
+        size = request[3]
+        #make sure this request isn't bigger than the whole shelter
+        if size > x:
+            print request
+            print x
+            sys.exit(0)
+        request[6] = 1 #mark it as sheltered
+        if self.tail + size > self.end:
+            #out of space, back to beginning of shelter
+            self.tail = self.start
+        #modify request to write to tail of shelter
+        request[2] = self.tail
+        self.tail += size
+        return
 
 
 #MAIN PROCESSING LOOP
@@ -238,47 +196,36 @@ for filename in traces:
         reader = csv.reader(input, delimiter=' ')
         writer = csv.writer(output, delimiter=' ')
         for row in reader:    
+            time = row[0]
             disk_num = row[1]
             block_num = int(row[2])
             block_size = int(row[3])
             flag = int(row[4])
 
             #make row entries ints now so we don't have to cast them later
-            row[2] = block_num
-            row[3] = block_size
-            row[4] = flag
-            row.append(0) # row[6]; default - not sheltered
+            simulated_request = [time,
+                                 disk_num,
+                                 block_num,
+                                 block_size,
+                                 flag,
+                                 row[5],
+                                 0] #flag indicating whether request was sheltered; not sheltered by default
 
-            if not current_reqs:
-                #this is the first row!
-                current_reqs = CurrentReq(row)
-                continue
-
-            if current_reqs.is_sequential(row):
-                #this is a continuation of the current request
-                current_reqs.add_req(row)
+            simulated_requests = [simulated_request]  #we may break this up into multiple requests to dodge shelters
+            if should_shelter(simulated_request):
+                #modify block number so it's sheltered
+                shelter_write(simulated_request) 
+                last_sheltered = True
             else:
-                #this is the beginning of a new request
-                #first, deal with old request.
-                if current_reqs.should_shelter():      
-                    shelter_writes(current_reqs) #modify each request so it's written to appropriate block in a shelter
-                    last_sheltered = True
-                else:
-                    current_reqs.shift_requests() #if this series of requests originally overlapped with a shelter, skip over the shelter
-                    last_sheltered = False
-                #Now that requests have been modified as needed,
-                #we can write them to outfile
-                for req in current_reqs.requests:
-                    writer.writerow(req)
-                #update tail
-                tail = current_reqs.get_next_blk()
-                current_reqs = CurrentReq(row)
-        #Now flush any remaining requests to outfile
-        if current_reqs.should_shelter():
-            shelter_writes(current_reqs)
-        else:
-            current_reqs.shift_requests()
-        for req in current_reqs.requests:
-            writer.writerow(req)
-                
+                #move requests to avoid a shelter
+                #NOTE: in some cases, this could cause a request that wouldn't be sheltered
+                #to be broken up into requests that would be
+                #but we don't shelter them in that case
+                simulated_requests = shift_request(simulated_request)
+                last_sheltered = False
+            #update tail - start of last request + length of last request
+            tail = simulated_requests[-1][2] + simulated_requests[-1][3]
+
+            for request in simulated_requests:
+                writer.writerow(request)
 
