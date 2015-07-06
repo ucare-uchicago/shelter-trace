@@ -21,15 +21,18 @@ import settings
 
 args = config.args
 
-#cutoff size in KB
-#policy_size = 32
-
 #MB in sectors
 one_MB = 2 * 1024
 
 #info about size of preallocated shelters:
 #x is the size of a shelter, 
 #y is the distance between the start of one shelter and start of the next (shelter range)
+"""
+Policy    Description                   X (in sectors)  Y (in sectors)
+P1        1 MB shelter every 10 MB      1MB             10MB
+P2        5 MB shelter every 50 MB      5MB             50MB
+P3        10 MB shelter every 100 MB    10MB            100MB
+"""
 if args.prealloc == 1:
     x = 1 * one_MB
 elif args.prealloc == 2:
@@ -37,12 +40,6 @@ elif args.prealloc == 2:
 else:
     x = 10 * one_MB
 y = x * 10
-
-#info about cleanup:
-if not(args.code =="B" or args.code =="C"):
-    print "Cleanup not supported! Please choose policy B or C."
-    sys.exit(0)
-
 
 #get list of input files
 trace_name = settings.traces[int(args.number) - 1]
@@ -61,6 +58,10 @@ def round_down(num, divisor):
     return num - (num%divisor)
 
 #return 1st block number of next shelter after block_num
+#if block_num is inside of a shelter, returns the 1st block of that shelter
+#for any natural number n, blocks from (n + 0.9)y - (n + 1)y are sheltered
+#e.g. if we have 1MB sheltered every 10MB, then our sheltered ranges are 19MB-20MB, 29MB-30MB, etc. 
+#so get_next_shelter(block) = 19MB for any block in range 10MB-20MB
 def get_next_shelter (block_num):
     shelter = round_down(block_num, y) + (x * 9)
     #If shelter starts before block_num, last write must have been sheltered too
@@ -69,23 +70,31 @@ def get_next_shelter (block_num):
 
 #given a request, break it into a list of requests 
 #none of which overlaps with a shelter
+#note that this returns the requests in reverse order
+#also note that req should not start inside a shelter
+#e.g. if 19MB-20MB is sheltered, then dodge_shelters(18MB-20MB)
+#would become [18MB-19MB,20MB-21MB]
 def dodge_shelters(req):
     start = req[2]
     size = req[3]
     next_shelter = get_next_shelter(start)
     if start + size <= next_shelter:
+        #the request does not overlap a shelter, so it doesn't need to be modified
         return [req]
     else:
         overlap = start + size - next_shelter
         new_req = copy(req)
+        #new_req is the segment of req before a shelter
         new_req[3] = size - overlap
         next_req = copy(req)
+        #next_req starts up immediately after the shelter
         next_req[2] = next_shelter + x
         next_req[3] = overlap
         new_reqs = dodge_shelters(next_req)
         new_reqs.append(new_req)
         return new_reqs
 
+#shift requests down to factor in where they would be on disk if some space was set aside for shelters
 def shift_request(req):
     if args.code == "B":
         #Policy B indicates we don't shift requests to avoid shelters,
@@ -98,6 +107,7 @@ def shift_request(req):
         num_shelters = start_blk / y
         shift = num_shelters * x
         new_start = start_blk + shift
+        next_shelter = get_next_shelter(new_start)
         if new_start >= next_shelter:
             #new start is inside a shelter
             #so shift it one more shelter's-length down
@@ -105,7 +115,7 @@ def shift_request(req):
             next_shetler = get_next_shelter(new_start)
         req[2] = new_start
         #split up request as needed so it doesn't run into a shelter
-        split_req = dodge_shelters(req)
+        split_reqs = dodge_shelters(req)
         split_reqs.reverse() #dodge_shelters returns requests in reverse because recursion
         if not split_reqs:
             print "dodge_shelters returned an empty request!"
@@ -126,6 +136,8 @@ def shelter_write (current_request):
     #so don't change it
     if tail >= 0:
         shelter_blk = get_next_shelter(tail)
+        #if last_sheltered is true, we just have two consecutive sheltered requests
+        #e.g. shelter request 1 at block 4, then shelter request 2 at block 5
         if shelter_blk < tail and not(last_sheltered):
             #the tail is inside a shelter
             #this should only happen if we're in policy B, so not shifting
@@ -141,6 +153,29 @@ def shelter_write (current_request):
         shelter = shelters[shelter_blk]
         shelter.shelter_write(current_request)
     return
+
+#functions to handle shelter swapping
+
+#Reduction for finding the emptiest shelter
+def min(shelt1, shelt2):
+    if shelt1.size_sheltered() < shelt2.size_sheltered():
+        return shelt1
+    else:
+        return shelt2
+
+#swap shelters when the current one is too full
+def shelter_swap(shelt, req_size):
+    emptiest_shelter = reduce(min, shelters.values())
+    if emptiest_shelter.space_left() < req_size:
+        #The shelters are all too full. Time for a full reset
+        for s in shelters.values():
+            s.reset()
+    else:
+        #swap shelt with emptiest_shelter
+        empty_size = emptiest_shelter.size_sheltered()
+        full_size = shelt.size_sheltered()
+        shelt.tail = shelt.start + empty_size
+        emptiest_shelter.tail = emptiest_shelter.start + full_size
 
 
 #CLASSES
@@ -159,6 +194,17 @@ class Shelter:
             return True
         else:
             return False
+    def size_sheltered(self):
+        return self.tail - self.start
+    def reset(self):
+        self.tail = self.start
+    def space_left(self):
+        return self.end - self.tail
+    def is_full(self):
+        if self.space_left() <= policy_size * 2:
+            return True
+        else:
+            return False
     def shelter_write(self, request):
         #modify request so it's at appropriate point in shelter
         size = request[3]
@@ -168,9 +214,13 @@ class Shelter:
             print x
             sys.exit(0)
         request[6] = 1 #mark it as sheltered
-        if self.tail + size > self.end:
-            #out of space, back to beginning of shelter
-            self.tail = self.start
+        if not(self.enough_space(request)):
+            if args.code=="S":
+                shelter_swap(self, req[3])
+                #swap!
+            else:
+                #just start over at beginning of shelter
+                self.tail = self.start
         #modify request to write to tail of shelter
         request[2] = self.tail
         self.tail += size
@@ -191,6 +241,25 @@ for filename in traces:
     #this affects how we shelter a write when the current tail is inside a shelter
     last_sheltered = False
     outfile = "{}/{}_{}".format(settings.simulated_traces_path, policy_code, os.path.basename(filename))
+
+    if args.code == "S":
+        #we need to initialize ALL the shelters,
+        #so we can find the emptiest one as needed
+        
+        #first look for the highest block
+        with open(filename, "r") as input, open(outfile, "w") as output:
+            reader = csv.reader(input, delimiter=' ')
+            max_block = max([int(row[2]) + int(row[3]) for row in reader])
+            #Add some extra space to account for shifting
+            max_block = max_block * 1.1
+
+            #now initialize all shelters that start before max_block
+            while shelter_blk <= max_block - x:
+                shelters[shelter_blk] = Shelter(shelter_blk)
+                shelter_blk += y
+            header = "Total number of shelters: " + str(len(shelters))
+            output.write(header)
+
 
     with open(filename, "r") as input, open(outfile, "w") as output:
         reader = csv.reader(input, delimiter=' ')
