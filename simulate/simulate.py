@@ -24,6 +24,7 @@ args = config.args
 #MB in sectors
 one_MB = 2 * 1024
 
+
 #info about size of preallocated shelters:
 #x is the size of a shelter, 
 #y is the distance between the start of one shelter and start of the next (shelter range)
